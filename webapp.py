@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
 import re
+import os
 import sys
+import time
 import threading
+import traceback
+import subprocess
 
 if sys.version > '3':
     unicode = str
+    import _thread as thread
+else:
+    import thread
 
 ctx = threading.local()
 
@@ -267,6 +274,7 @@ class Route(object):
 
 class WSGIApplication(object):
     def __init__(self, host='127.0.0.1', port=9000):
+        self.debug = False
         self.host = host
         self.port = port
         self._get_static = {}
@@ -305,7 +313,52 @@ class WSGIApplication(object):
             raise notfound()
         raise badrequest()
 
-    def run(self):
+    def run(self, debug=False):
+        self.debug = debug
+        if self.debug:
+            self.reloader_run()
+        else:
+            self.runserver()
+
+    def reloader_run(self, interval=1):
+        # 自动重启服务
+        if os.environ.get('WEB_CHILD') == 'true':
+            # 监控进程
+            files = dict()
+            # 记录引用文件的最近更新时间
+            for module in sys.modules.values():
+                file_path = getattr(module, '__file__', None)
+                if file_path and os.path.isfile(file_path):
+                    file_split = os.path.splitext(file_path)
+                    if file_split[1] in ('.py', '.pyc', '.pyo'):
+                        file_path = file_split[0] + '.py'
+                        files[file_path] = os.stat(file_path).st_mtime
+            # 创建线程启动wsgi
+            thread.start_new_thread(self.runserver, ())
+            while True:
+                # 监控文件变化
+                time.sleep(interval)
+                for file_path, file_mtime in files.items():
+                    if not os.path.exists(file_path):
+                        print("File changed: %s (deleted)" % file_path)
+                    elif os.stat(file_path).st_mtime > file_mtime:
+                        print("File changed: %s (modified)" % file_path)
+                    else:
+                        continue
+                    print("Restarting...")
+                    time.sleep(interval)
+                    # 结束当前进程，主进程中重新启动
+                    sys.exit(3)
+        while True:
+            args = [sys.executable] + sys.argv
+            environ = os.environ.copy()
+            environ['WEB_CHILD'] = 'true'
+            # 创建阻塞的监控进程
+            exit_status = subprocess.call(args, env=environ)
+            if exit_status != 3:
+                sys.exit(exit_status)
+
+    def runserver(self):
         # 使用python内置的wsgi服务
         from wsgiref.simple_server import make_server
         server = make_server(self.host, self.port, self.application)
@@ -340,7 +393,15 @@ class WSGIApplication(object):
             return [error]
         except Exception as e:
             # 系统错误
-            error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
+            if self.debug:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                exception_list = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                stacks = ''.join(exception_list)
+                error = '''<html><body><h1>500 Internal Server Error</h1>
+                            <div style="font-family:Monaco, Menlo, Consolas, 'Courier New', monospace;"><pre>''' \
+                        + stacks.replace('<', '&lt;').replace('>', '&gt;') + '''</pre></div></body></html>'''
+            else:
+                error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
             error = _to_byte(error)
             start_response('500 Internal Server Error', [])
             return [error]

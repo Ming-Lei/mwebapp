@@ -9,4 +9,4 @@ app.register(index)
 app.register(admin)
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
