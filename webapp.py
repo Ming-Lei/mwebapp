@@ -28,33 +28,33 @@ def _build_regex(path):
     return ''.join(re_list)
 
 
-class WSGIApplication(object):
-    def __init__(self, host='127.0.0.1', port=9000):
-        self.host = host
-        self.port = port
+class Route(object):
+    # 路由处理类
+    def __init__(self, startpath=''):
+        self.startpath = startpath
         self._get_static = {}
         self._post_static = {}
-
         self._get_dynamic = {}
         self._post_dynamic = {}
 
     def route(self, path, method):
         # 路由装饰器 根据路由及请求方式保存其对应关系
         def _decorator(func):
-            is_static = _re_route.search(path) is None
+            allpath = self.startpath + path
+            is_static = _re_route.search(allpath) is None
             if is_static:
                 # 静态路由直接保存
                 if method == 'GET':
-                    self._get_static[path] = func
+                    self._get_static[allpath] = func
                 if method == 'POST':
-                    self._post_static[path] = func
+                    self._post_static[allpath] = func
             else:
                 # 动态路由需正则转换
                 if method == 'GET':
-                    re_path = re.compile(_build_regex(path))
+                    re_path = re.compile(_build_regex(allpath))
                     self._get_dynamic[re_path] = func
                 if method == 'POST':
-                    re_path = re.compile(_build_regex(path))
+                    re_path = re.compile(_build_regex(allpath))
                     self._post_dynamic[re_path] = func
             return func
 
@@ -67,6 +67,23 @@ class WSGIApplication(object):
     def post(self, path):
         _decorator = self.route(path, 'POST')
         return _decorator
+
+
+class WSGIApplication(object):
+    def __init__(self, host='127.0.0.1', port=9000):
+        self.host = host
+        self.port = port
+        self._get_static = {}
+        self._post_static = {}
+        self._get_dynamic = {}
+        self._post_dynamic = {}
+
+    def register(self, route):
+        # Route路由表注册
+        self._get_static.update(route._get_static)
+        self._post_static.update(route._post_static)
+        self._get_dynamic.update(route._get_dynamic)
+        self._post_dynamic.update(route._post_dynamic)
 
     def match(self, url, methods):
         # 根据请求地址及方式匹配对应的处理函数
@@ -107,6 +124,3 @@ class WSGIApplication(object):
         headers = [('Content-Type', 'text/html; charset=utf-8')]
         start_response(status, headers)
         return [r.encode('utf-8')]
-
-
-app = WSGIApplication()
