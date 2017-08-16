@@ -4,10 +4,12 @@ import re
 import os
 import sys
 import time
+import json
 import threading
 import traceback
 import subprocess
 
+from template_engine import render
 from environ import _to_byte, Request, Response
 from httperror import notfound, badrequest, RedirectError, HttpError
 
@@ -46,6 +48,28 @@ def _build_regex(path):
     return ''.join(re_list)
 
 
+def render_html(path, content):
+    ctx.response.content_type = 'text/html; charset=utf-8'
+    return render(path, content)
+
+
+def render_json(content):
+    content = json.dumps(content)
+    ctx.response.content_type = 'application/json'
+    return content
+
+
+def url_for(re_path, groups):
+    match_list = _re_route.findall(re_path)
+    match_len = len(match_list)
+    groups_len = len(groups)
+    if match_len != groups_len:
+        raise TypeError('groups takes at most %s argument (%s given)' % (match_len, groups_len))
+    for index, match in enumerate(match_list):
+        re_path = re_path.replace(match, groups[index])
+    return re_path
+
+
 class Route(object):
     # 路由处理类
     def __init__(self, startpath=''):
@@ -59,6 +83,7 @@ class Route(object):
         # 路由装饰器 根据路由及请求方式保存其对应关系
         def _decorator(func):
             allpath = self.startpath + path
+            func.path = allpath
             is_static = _re_route.search(allpath) is None
             if is_static:
                 # 静态路由直接保存
@@ -87,8 +112,50 @@ class Route(object):
         return _decorator
 
 
+class Middleware():
+    # 中间件处理类
+    def __init__(self, basic):
+        self.app = basic
+        self.request = []
+        self.response = []
+
+    def before_request(self, func):
+        # 请求预处理
+        self.request.append(func)
+        return func
+
+    def after_request(self, func):
+        # 请求后处理
+        self.response.append(func)
+        return func
+
+    def __call__(self, environ, start_response):
+        request = ctx.request = Request(environ)
+        ctx.response = Response()
+        # 请求预处理
+        for before in self.request:
+            before(request)
+        # 预处理未返回结果正常执行
+        if not hasattr(ctx, 'responce_html'):
+            self.app(request)
+        # 请求后处理
+        for after in self.response:
+            after(request)
+        # 返回处理结果
+        status = ctx.response.status
+        headers = ctx.response.headers
+        responce_html = ctx.responce_html
+        start_response(status, headers)
+        # 清空ctx
+        del ctx.request
+        del ctx.response
+        del ctx.responce_html
+        return responce_html
+
+
 class WSGIApplication(object):
     def __init__(self, host='127.0.0.1', port=9000):
+        self.middleware = Middleware(self.application)
         self.debug = False
         self.host = host
         self.port = port
@@ -176,33 +243,30 @@ class WSGIApplication(object):
     def runserver(self):
         # 使用python内置的wsgi服务
         from wsgiref.simple_server import make_server
-        server = make_server(self.host, self.port, self.application)
+        server = make_server(self.host, self.port, self.middleware)
         print('run server on http://%s:%s' % (self.host, self.port))
         server.serve_forever()
 
-    def application(self, environ, start_response):
+    def application(self, request):
         # 请求处理
-        ctx.request = request = Request(environ)
         request_method = request.request_method
         path_info = request.path_info
         try:
             # 匹配处理程序
             r = self.match(path_info, request_method)
             r = _to_byte(r)
-            status = '200 OK'
-            headers = [('Content-Type', 'text/html; charset=utf-8')]
-            start_response(status, headers)
-            return [r]
+            ctx.responce_html = [r]
         except RedirectError as e:
             # 重定向
-            start_response(e.status, [{('Location', e.location)}])
-            return []
+            ctx.response.status = e.status
+            ctx.response.set_header('Location', e.location)
+            ctx.responce_html = []
         except HttpError as e:
             # http error
             error = '<html><body><h1>' + e.status + '</h1></body></html>'
             error = _to_byte(error)
-            start_response(e.status, e.headers)
-            return [error]
+            ctx.response.status = e.status
+            ctx.responce_html = [error]
         except Exception as e:
             # 系统错误
             if self.debug:
@@ -215,5 +279,5 @@ class WSGIApplication(object):
             else:
                 error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
             error = _to_byte(error)
-            start_response('500 Internal Server Error', [])
-            return [error]
+            ctx.response.status = 500
+            ctx.responce_html = [error]
