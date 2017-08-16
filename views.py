@@ -9,7 +9,7 @@ index = Route()
 @index.get('/')
 def home():
     request = ctx.request
-    addr = request['REMOTE_ADDR']
+    addr = request.remote_addr
     return render('template/index.html', {'addr': addr})
 
 
