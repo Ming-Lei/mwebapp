@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
+from template_engine import render
 from webapp import Route, ctx
 
 index = Route()
@@ -9,12 +10,16 @@ index = Route()
 def home():
     request = ctx.request
     addr = request['REMOTE_ADDR']
-    return '<h1>hello world</h1>' + '\n the ip you from ' + addr
+    return render('template/index.html', {'addr': addr})
 
 
 @index.get('/:name/')
 def other(name):
-    return '<h1>hello %s</h1>' % name
+    content = {
+        'name': name,
+        'topics': ['Python', 'Geometry', 'Juggling'],
+    }
+    return render('template/other.html', content)
 
 
 admin = Route(startpath='/admin')
