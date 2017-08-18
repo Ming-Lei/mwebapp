@@ -171,7 +171,7 @@ class Dict(dict):
 class MultipartFile(object):
     def __init__(self, storage):
         self.filename = _to_str(storage.filename)
-        self.file = storage.file
+        self.body = storage.file.read()
 
 
 class Request(object):

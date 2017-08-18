@@ -30,10 +30,9 @@ def redirect_test():
 def other(name):
     request = ctx.request
     if request.request_method == 'POST':
-        input = request.input()['test']
-        with open(input.filename, 'wb') as f:
-            f.write(input.file.read())
-
+        file = request.get('test')
+        with open(file.filename, 'wb') as f:
+            f.write(file.body)
     content = {
         'name': name,
         'topics': ['Python', 'Geometry', 'Juggling'],
