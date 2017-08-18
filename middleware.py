@@ -14,6 +14,8 @@ class load_middleware():
 
 def static_middleware(request):
     path = request.path_info
+    if path == '/favicon.ico':
+        path = '/static' + path
     if path.startswith('/static'):
         fpath = '.' + path
         if not os.path.isfile(fpath):

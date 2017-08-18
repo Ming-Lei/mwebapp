@@ -26,8 +26,14 @@ def redirect_test():
     return redirect(url_for(admin_index.path, ('admin',)))
 
 
-@index.get('/:name/')
+@index.route('/:name/')
 def other(name):
+    request = ctx.request
+    if request.request_method == 'POST':
+        input = request.input()['test']
+        with open(input.filename, 'wb') as f:
+            f.write(input.file.read())
+
     content = {
         'name': name,
         'topics': ['Python', 'Geometry', 'Juggling'],

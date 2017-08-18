@@ -218,13 +218,13 @@ class Request(object):
     def input(self, **kw):
         copy = Dict(**kw)
         raw = self._get_raw_input()
-        for k, v in raw.iteritems():
+        for k, v in raw.items():
             copy[k] = v[0] if isinstance(v, list) else v
         return copy
 
     def get_body(self):
         fp = self._environ['wsgi.input']
-        return fp.read()
+        return fp.read(int(self._environ.get('CONTENT_LENGTH','0')))
 
     @property
     def remote_addr(self):

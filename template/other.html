@@ -9,5 +9,9 @@
     {% for topic in topics %}
         <p>You are interested in {{ topic }}.</p>
     {% endfor %}
+    <form action="/other/" method="post" enctype="multipart/form-data">
+        <input type="file" name="test">
+        <input type="submit" value="提交">
+    </form>
 </body>
 </html>

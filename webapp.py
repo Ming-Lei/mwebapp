@@ -79,24 +79,26 @@ class Route(object):
         self._get_dynamic = {}
         self._post_dynamic = {}
 
-    def route(self, path, method):
+    def route(self, path, method=None):
         # 路由装饰器 根据路由及请求方式保存其对应关系
+        if not method:
+            method = ['GET', 'POST']
         def _decorator(func):
             allpath = self.startpath + path
             func.path = allpath
             is_static = _re_route.search(allpath) is None
             if is_static:
                 # 静态路由直接保存
-                if method == 'GET':
+                if 'GET' in method:
                     self._get_static[allpath] = func
-                if method == 'POST':
+                if 'POST' in method:
                     self._post_static[allpath] = func
             else:
                 # 动态路由需正则转换
-                if method == 'GET':
+                if 'GET' in method:
                     re_path = re.compile(_build_regex(allpath))
                     self._get_dynamic[re_path] = func
-                if method == 'POST':
+                if 'POST' in method:
                     re_path = re.compile(_build_regex(allpath))
                     self._post_dynamic[re_path] = func
             return func
@@ -104,11 +106,11 @@ class Route(object):
         return _decorator
 
     def get(self, path):
-        _decorator = self.route(path, 'GET')
+        _decorator = self.route(path, ['GET'])
         return _decorator
 
     def post(self, path):
-        _decorator = self.route(path, 'POST')
+        _decorator = self.route(path, ['POST'])
         return _decorator
 
 
