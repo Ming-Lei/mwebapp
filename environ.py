@@ -244,7 +244,7 @@ class Request(object):
 
     @property
     def request_method(self):
-        return self._environ['REQUEST_METHOD']
+        return self._environ.get('REQUEST_METHOD', '')
 
     @property
     def path_info(self):
