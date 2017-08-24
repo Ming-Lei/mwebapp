@@ -83,6 +83,7 @@ class Route(object):
         # 路由装饰器 根据路由及请求方式保存其对应关系
         if not method:
             method = ['GET', 'POST']
+
         def _decorator(func):
             allpath = self.startpath + path
             func.path = allpath
@@ -118,31 +119,32 @@ class Middleware():
     # 中间件处理类
     def __init__(self, basic):
         self.app = basic
-        self.request = []
-        self.response = []
+        self.interceptor_list = []
+        self.fn = None
 
-    def before_request(self, func):
-        # 请求预处理
-        self.request.append(func)
-        return func
+    def interceptor(self, func):
+        self.interceptor_list.append(func)
 
-    def after_request(self, func):
-        # 请求后处理
-        self.response.append(func)
-        return func
+    def _build_interceptor_fn(self, func, next):
+        # 中间件装饰器
+        def _wrapper():
+            return func(next)
+
+        return _wrapper
+
+    def build_interceptor_chain(self):
+        # 中间件包装函数
+        L = self.interceptor_list
+        fn = self.app
+        for f in L:
+            fn = self._build_interceptor_fn(f, fn)
+        self.fn = fn
 
     def __call__(self, environ, start_response):
-        request = ctx.request = Request(environ)
+        ctx.request = Request(environ)
         ctx.response = Response()
-        # 请求预处理
-        for before in self.request:
-            before(request)
-        # 预处理未返回结果正常执行
-        if not hasattr(ctx, 'responce_html'):
-            self.app(request)
-        # 请求后处理
-        for after in self.response:
-            after(request)
+        # 执行中间件函数，return即结束
+        self.fn()
         # 返回处理结果
         status = ctx.response.status
         headers = ctx.response.headers
@@ -249,8 +251,9 @@ class WSGIApplication(object):
         print('run server on http://%s:%s' % (self.host, self.port))
         server.serve_forever()
 
-    def application(self, request):
+    def application(self):
         # 请求处理
+        request = ctx.request
         request_method = request.request_method
         path_info = request.path_info
         try:

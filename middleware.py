@@ -9,10 +9,13 @@ from environ import _to_byte, _to_str
 
 class load_middleware():
     def __init__(self, middleware):
-        middleware.before_request(static_middleware)
+        middleware.interceptor(static_middleware)
+        middleware.interceptor(test_middlewate)
+        middleware.build_interceptor_chain()
 
 
-def static_middleware(request):
+def static_middleware(next):
+    request = ctx.request
     path = request.path_info
     if path == '/favicon.ico':
         path = '/static' + path
@@ -32,3 +35,12 @@ def static_middleware(request):
             ctx.response.status = 200
             ctx.response.set_header('CONTENT-TYPE', content_type)
             ctx.responce_html = [open(fpath, 'rb').read()]
+        return True
+    return next()
+
+
+def test_middlewate(next):
+    request = ctx.request
+    path = request.path_info
+    print(path)
+    return next()
