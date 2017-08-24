@@ -9,8 +9,8 @@ app = WSGIApplication()
 app.register(index)
 app.register(admin)
 
-middleware = app.middleware
-load_middleware(middleware)
+interceptor = app.interceptor
+load_middleware(interceptor)
 
 if __name__ == '__main__':
     app.run(debug=True)

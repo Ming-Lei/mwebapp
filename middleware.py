@@ -4,14 +4,14 @@ import os
 import mimetypes
 
 from webapp import ctx
-from environ import _to_byte, _to_str
+from environ import _to_str
+from httperror import notfound
 
 
 class load_middleware():
-    def __init__(self, middleware):
-        middleware.interceptor(static_middleware)
-        middleware.interceptor(test_middlewate)
-        middleware.build_interceptor_chain()
+    def __init__(self, interceptor):
+        interceptor(static_middleware)
+        interceptor(test_middlewate)
 
 
 def static_middleware(next):
@@ -22,20 +22,14 @@ def static_middleware(next):
     if path.startswith('/static'):
         fpath = _to_str('.' + path)
         if not os.path.isfile(fpath):
-            error = '<html><body><h1>404 Not Found</h1></body></html>'
-            error = _to_byte(error)
-
-            ctx.response.status = 404
-            ctx.response.set_header('Location', '404 Not Found')
-            ctx.responce_html = [error]
+            raise notfound()
         else:
             fext = os.path.splitext(fpath)[1]
             content_type = mimetypes.types_map.get(fext.lower(), 'application/octet-stream')
 
             ctx.response.status = 200
             ctx.response.set_header('CONTENT-TYPE', content_type)
-            ctx.responce_html = [open(fpath, 'rb').read()]
-        return True
+            return open(fpath, 'rb').read()
     return next()
 
 

@@ -115,12 +115,24 @@ class Route(object):
         return _decorator
 
 
-class Middleware():
-    # 中间件处理类
-    def __init__(self, basic):
-        self.app = basic
-        self.interceptor_list = []
+class WSGIApplication(object):
+    def __init__(self, host='127.0.0.1', port=9000):
         self.fn = None
+        self.debug = False
+        self.host = host
+        self.port = port
+        self._get_static = {}
+        self._post_static = {}
+        self._get_dynamic = {}
+        self._post_dynamic = {}
+        self.interceptor_list = []
+
+    def register(self, route):
+        # Route路由表注册
+        self._get_static.update(route._get_static)
+        self._post_static.update(route._post_static)
+        self._get_dynamic.update(route._get_dynamic)
+        self._post_dynamic.update(route._post_dynamic)
 
     def interceptor(self, func):
         self.interceptor_list.append(func)
@@ -132,51 +144,19 @@ class Middleware():
 
         return _wrapper
 
-    def build_interceptor_chain(self):
+    def _build_interceptor_chain(self):
         # 中间件包装函数
         L = self.interceptor_list
-        fn = self.app
+        fn = self.match
         for f in L:
             fn = self._build_interceptor_fn(f, fn)
         self.fn = fn
 
-    def __call__(self, environ, start_response):
-        ctx.request = Request(environ)
-        ctx.response = Response()
-        # 执行中间件函数，return即结束
-        self.fn()
-        # 返回处理结果
-        status = ctx.response.status
-        headers = ctx.response.headers
-        responce_html = ctx.responce_html
-        start_response(status, headers)
-        # 清空ctx
-        del ctx.request
-        del ctx.response
-        del ctx.responce_html
-        return responce_html
-
-
-class WSGIApplication(object):
-    def __init__(self, host='127.0.0.1', port=9000):
-        self.middleware = Middleware(self.application)
-        self.debug = False
-        self.host = host
-        self.port = port
-        self._get_static = {}
-        self._post_static = {}
-        self._get_dynamic = {}
-        self._post_dynamic = {}
-
-    def register(self, route):
-        # Route路由表注册
-        self._get_static.update(route._get_static)
-        self._post_static.update(route._post_static)
-        self._get_dynamic.update(route._get_dynamic)
-        self._post_dynamic.update(route._post_dynamic)
-
-    def match(self, url, methods):
+    def match(self):
         # 根据请求地址及方式匹配对应的处理函数
+        request = ctx.request
+        methods = request.request_method
+        url = request.path_info
         if methods == 'GET':
             # 优先匹配静态路由
             fn = self._get_static.get(url, None)
@@ -200,6 +180,8 @@ class WSGIApplication(object):
         raise badrequest()
 
     def run(self, debug=False):
+        # 加载中间件
+        self._build_interceptor_chain()
         self.debug = debug
         if self.debug:
             self.reloader_run()
@@ -247,18 +229,16 @@ class WSGIApplication(object):
     def runserver(self):
         # 使用python内置的wsgi服务
         from wsgiref.simple_server import make_server
-        server = make_server(self.host, self.port, self.middleware)
+        server = make_server(self.host, self.port, self.application)
         print('run server on http://%s:%s' % (self.host, self.port))
         server.serve_forever()
 
-    def application(self):
+    def application(self, environ, start_response):
+        ctx.request = Request(environ)
+        ctx.response = Response()
         # 请求处理
-        request = ctx.request
-        request_method = request.request_method
-        path_info = request.path_info
         try:
-            # 匹配处理程序
-            r = self.match(path_info, request_method)
+            r = self.fn()
             r = _to_byte(r)
             ctx.responce_html = [r]
         except RedirectError as e:
@@ -286,3 +266,14 @@ class WSGIApplication(object):
             error = _to_byte(error)
             ctx.response.status = 500
             ctx.responce_html = [error]
+        finally:
+            # 返回处理结果
+            status = ctx.response.status
+            headers = ctx.response.headers
+            responce_html = ctx.responce_html
+            start_response(status, headers)
+            # 清空ctx
+            del ctx.request
+            del ctx.response
+            del ctx.responce_html
+            return responce_html
