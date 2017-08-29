@@ -10,8 +10,8 @@ from httperror import notfound
 
 class load_middleware():
     def __init__(self, interceptor):
-        interceptor(static_middleware)
         interceptor(test_middlewate)
+        interceptor(static_middleware)
 
 
 def static_middleware(next):

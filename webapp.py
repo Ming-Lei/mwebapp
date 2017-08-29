@@ -117,7 +117,7 @@ class Route(object):
 
 class WSGIApplication(object):
     def __init__(self, host='127.0.0.1', port=9000):
-        self.fn = None
+        self.fn = self.match
         self.debug = False
         self.host = host
         self.port = port
@@ -147,10 +147,9 @@ class WSGIApplication(object):
     def _build_interceptor_chain(self):
         # 中间件包装函数
         L = self.interceptor_list
-        fn = self.match
+        L.reverse()
         for f in L:
-            fn = self._build_interceptor_fn(f, fn)
-        self.fn = fn
+            self.fn = self._build_interceptor_fn(f, self.fn)
 
     def match(self):
         # 根据请求地址及方式匹配对应的处理函数
