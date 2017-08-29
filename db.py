@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
-import threading
 
 from environ import Dict
 
@@ -37,7 +36,7 @@ class _LasyConnection(object):
             connection.close()
 
 
-class _DbCtx(threading.local):
+class _DbCtx(object):
     def __init__(self):
         self.connection = None
 

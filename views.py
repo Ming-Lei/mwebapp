@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
+from models import User
 from httperror import redirect
 from webapp import Route, ctx, render_html, render_json, url_for
+
 index = Route()
 
 
@@ -14,11 +16,8 @@ def home():
 
 @index.get('/api/')
 def api():
-    content = {
-        'name': 'api',
-        'topics': ['Python', 'Geometry', 'Juggling'],
-    }
-    return render_json(content)
+    user_list = User.find_by('where id<?', 1000)
+    return render_json(user_list)
 
 
 @index.get('/redirect/')
