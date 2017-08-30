@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
-from db import create_engine
-from webapp import WSGIApplication
+from mwebapp.db import create_engine
+from mwebapp.webapp import WSGIApplication
+
 from views import index, admin
 from middleware import load_middleware
 
@@ -14,6 +15,5 @@ interceptor = app.interceptor
 load_middleware(interceptor)
 
 create_engine('root', 'password', 'test')
-
 if __name__ == '__main__':
     app.run(debug=True)

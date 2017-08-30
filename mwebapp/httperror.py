@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
-from environ import _RESPONSE_STATUSES, _HEADER_X_POWERED_BY
+from mwebapp.environ import _RESPONSE_STATUSES, _HEADER_X_POWERED_BY
 
 
 class HttpError(Exception):

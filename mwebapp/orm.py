@@ -2,7 +2,7 @@
 # __author__ = 'MingLei Ji'
 import time
 
-import db
+from mwebapp import db
 
 
 class Field(object):

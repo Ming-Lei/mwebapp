@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
 
-from environ import Dict
+from mwebapp.environ import Dict
 
 
 class DBError(Exception):

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
 from models import User
-from httperror import redirect
-from webapp import Route, ctx, render_html, render_json, url_for
+from mwebapp.httperror import redirect
+from mwebapp.webapp import Route, ctx, render_html, render_json, url_for
 
 index = Route()
 

@@ -7,11 +7,12 @@ import time
 import json
 import threading
 import traceback
+import mimetypes
 import subprocess
 
-from template_engine import render
-from environ import _to_byte, Request, Response
-from httperror import notfound, badrequest, RedirectError, HttpError
+from mwebapp.template_engine import render
+from mwebapp.environ import _to_byte, Request, Response, _to_str
+from mwebapp.httperror import notfound, badrequest, RedirectError, HttpError
 
 if sys.version > '3':
     import _thread as thread
@@ -70,6 +71,25 @@ def url_for(re_path, groups):
     return re_path
 
 
+def static_middleware(next):
+    request = ctx.request
+    path = request.path_info
+    if path == '/favicon.ico':
+        path = '/static' + path
+    if path.startswith('/static'):
+        fpath = _to_str('.' + path)
+        if not os.path.isfile(fpath):
+            raise notfound()
+        else:
+            fext = os.path.splitext(fpath)[1]
+            content_type = mimetypes.types_map.get(fext.lower(), 'application/octet-stream')
+
+            ctx.response.status = 200
+            ctx.response.set_header('CONTENT-TYPE', content_type)
+            return open(fpath, 'rb').read()
+    return next()
+
+
 class Route(object):
     # 路由处理类
     def __init__(self, startpath=''):
@@ -125,7 +145,7 @@ class WSGIApplication(object):
         self._post_static = {}
         self._get_dynamic = {}
         self._post_dynamic = {}
-        self.interceptor_list = []
+        self.interceptor_list = [static_middleware]
 
     def register(self, route):
         # Route路由表注册

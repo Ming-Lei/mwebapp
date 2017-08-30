@@ -2,7 +2,7 @@
 # __author__ = 'MingLei Ji'
 import time
 
-from orm import Model, IntegerField, StringField, FloatField
+from mwebapp.orm import Model, IntegerField, StringField, FloatField
 
 
 class User(Model):
