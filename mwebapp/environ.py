@@ -260,7 +260,7 @@ class Request(object):
     def _get_headers(self):
         if not hasattr(self, '_headers'):
             hdrs = {}
-            for k, v in self._environ.iteritems():
+            for k, v in self._environ.items():
                 if k.startswith('HTTP_'):
                     # convert 'HTTP_ACCEPT_ENCODING' to 'ACCEPT-ENCODING'
                     hdrs[k[5:].replace('_', '-').upper()] = v.decode('utf-8')
@@ -303,7 +303,7 @@ class Response(object):
     def headers(self):
         L = [(_RESPONSE_HEADER_DICT.get(k, k), v) for k, v in self._headers.items()]
         if hasattr(self, '_cookies'):
-            for v in self._cookies.itervalues():
+            for v in self._cookies.values():
                 L.append(('Set-Cookie', v))
         L.append(_HEADER_X_POWERED_BY)
         return L
