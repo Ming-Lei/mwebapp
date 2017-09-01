@@ -15,5 +15,8 @@ interceptor = app.interceptor
 load_middleware(interceptor)
 
 create_engine('root', 'password', 'test')
+
 if __name__ == '__main__':
     app.run(debug=True)
+else:
+    application = app.get_application(debug=True)

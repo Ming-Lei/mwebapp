@@ -199,8 +199,6 @@ class WSGIApplication(object):
         raise badrequest()
 
     def run(self, debug=False):
-        # 加载中间件
-        self._build_interceptor_chain()
         self.debug = debug
         if self.debug:
             self.reloader_run()
@@ -248,51 +246,59 @@ class WSGIApplication(object):
     def runserver(self):
         # 使用python内置的wsgi服务
         from wsgiref.simple_server import make_server
-        server = make_server(self.host, self.port, self.application)
+        server = make_server(self.host, self.port, self.get_application(self.debug))
         print('run server on http://%s:%s' % (self.host, self.port))
         server.serve_forever()
 
-    def application(self, environ, start_response):
-        ctx.request = Request(environ)
-        ctx.response = Response()
-        # 请求处理
-        try:
-            r = self.fn()
-            r = _to_byte(r)
-            ctx.responce_html = [r]
-        except RedirectError as e:
-            # 重定向
-            ctx.response.status = e.status
-            ctx.response.set_header('Location', e.location)
-            ctx.responce_html = []
-        except HttpError as e:
-            # http error
-            error = '<html><body><h1>' + e.status + '</h1></body></html>'
-            error = _to_byte(error)
-            ctx.response.status = e.status
-            ctx.responce_html = [error]
-        except Exception as e:
-            # 系统错误
-            if self.debug:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                exception_list = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                stacks = ''.join(exception_list)
-                error = '''<html><body><h1>500 Internal Server Error</h1>
-                            <div style="font-family:Monaco, Menlo, Consolas, 'Courier New', monospace;"><pre>''' \
-                        + stacks.replace('<', '&lt;').replace('>', '&gt;') + '''</pre></div></body></html>'''
-            else:
-                error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
-            error = _to_byte(error)
-            ctx.response.status = 500
-            ctx.responce_html = [error]
-        finally:
-            # 返回处理结果
-            status = ctx.response.status
-            headers = ctx.response.headers
-            responce_html = ctx.responce_html
-            start_response(status, headers)
-            # 清空ctx
-            del ctx.request
-            del ctx.response
-            del ctx.responce_html
-            return responce_html
+    def get_application(self, debug=False):
+        # wsgi 入口 no reloader
+        self.debug = debug
+        # 加载中间件
+        self._build_interceptor_chain()
+
+        def application(environ, start_response):
+            ctx.request = Request(environ)
+            ctx.response = Response()
+            # 请求处理
+            try:
+                r = self.fn()
+                r = _to_byte(r)
+                ctx.responce_html = [r]
+            except RedirectError as e:
+                # 重定向
+                ctx.response.status = e.status
+                ctx.response.set_header('Location', e.location)
+                ctx.responce_html = []
+            except HttpError as e:
+                # http error
+                error = '<html><body><h1>' + e.status + '</h1></body></html>'
+                error = _to_byte(error)
+                ctx.response.status = e.status
+                ctx.responce_html = [error]
+            except Exception as e:
+                # 系统错误
+                if self.debug:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    exception_list = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    stacks = ''.join(exception_list)
+                    error = '''<html><body><h1>500 Internal Server Error</h1>
+                                <div style="font-family:Monaco, Menlo, Consolas, 'Courier New', monospace;"><pre>''' \
+                            + stacks.replace('<', '&lt;').replace('>', '&gt;') + '''</pre></div></body></html>'''
+                else:
+                    error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
+                error = _to_byte(error)
+                ctx.response.status = 500
+                ctx.responce_html = [error]
+            finally:
+                # 返回处理结果
+                status = ctx.response.status
+                headers = ctx.response.headers
+                responce_html = ctx.responce_html
+                start_response(status, headers)
+                # 清空ctx
+                del ctx.request
+                del ctx.response
+                del ctx.responce_html
+                return responce_html
+
+        return application
