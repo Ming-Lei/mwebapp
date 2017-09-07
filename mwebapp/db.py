@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
+import functools
+import threading
 
 from mwebapp.environ import Dict
 
@@ -36,7 +38,7 @@ class _LasyConnection(object):
             connection.close()
 
 
-class _DbCtx(object):
+class _DbCtx(threading.local):
     def __init__(self):
         self.connection = None
 
@@ -56,6 +58,7 @@ class _DbCtx(object):
 
 _db_ctx = _DbCtx()
 
+connect = None
 
 def create_engine(user, password, database, host='127.0.0.1', port=3306, **kw):
     if _db_ctx.is_init():
@@ -67,14 +70,40 @@ def create_engine(user, password, database, host='127.0.0.1', port=3306, **kw):
         params[k] = kw.pop(k, v)
     params.update(kw)
     params['buffered'] = True
-    _db_ctx.init(lambda: mysql.connector.connect(**params))
+    global connect
+    connect = lambda: mysql.connector.connect(**params)
+    _db_ctx.init(connect)
+
+
+class ConnectionCtx(object):
+    def __enter__(self):
+        global _db_ctx
+        self.should_cleanup = False
+        if not _db_ctx.is_init():
+            _db_ctx.init(connect)
+            self.should_cleanup = True
+        return self
+
+    def __exit__(self, exctype, excvalue, traceback):
+        global _db_ctx
+        if self.should_cleanup:
+            _db_ctx.cleanup()
+
+
+def with_connection(func):
+    @functools.wraps(func)
+    def _wrapper(*args, **kw):
+        with ConnectionCtx():
+            return func(*args, **kw)
+
+    return _wrapper
 
 
 def _select(sql, first, *args):
     cursor = None
     sql = sql.replace('?', '%s')
     try:
-        cursor = _db_ctx.connection.cursor()
+        cursor = _db_ctx.cursor()
         cursor.execute(sql, args)
         if cursor.description:
             names = [x[0] for x in cursor.description]
@@ -93,7 +122,7 @@ def _update(sql, *args):
     cursor = None
     sql = sql.replace('?', '%s')
     try:
-        cursor = _db_ctx.connection.cursor()
+        cursor = _db_ctx.cursor()
         cursor.execute(sql, args)
         r = cursor.rowcount
         _db_ctx.connection.commit()
@@ -103,10 +132,12 @@ def _update(sql, *args):
             cursor.close()
 
 
+@with_connection
 def select_one(sql, *args):
     return _select(sql, True, *args)
 
 
+@with_connection
 def select_int(sql, *args):
     d = _select(sql, True, *args)
     if len(d) != 1:
@@ -114,10 +145,12 @@ def select_int(sql, *args):
     return d.values()[0]
 
 
+@with_connection
 def select(sql, *args):
     return _select(sql, False, *args)
 
 
+@with_connection
 def insert(table, **kw):
     cols, args = zip(*kw.items())
     sql = 'insert into `%s` (%s) values (%s)' % (
@@ -125,6 +158,7 @@ def insert(table, **kw):
     return _update(sql, *args)
 
 
+@with_connection
 def update(sql, *args):
     return _update(sql, *args)
 
