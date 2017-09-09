@@ -50,6 +50,8 @@ def _build_regex(path):
 
 
 def render_html(path, content):
+    request = ctx.request
+    content.update({'request': request})
     ctx.response.content_type = 'text/html; charset=utf-8'
     return render(path, content)
 

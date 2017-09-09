@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 # __author__ = 'MingLei Ji'
-# 参考 500 Line or Less
-# http://aosabook.org/en/500L/pages/a-template-engine.html
-# 详细解释见简书 http://www.jianshu.com/p/b5d4aa45e771
+# 参见 http://python.jobbole.com/85155/
 import re
 
 
@@ -12,174 +10,164 @@ class TemplateSyntaxError(ValueError):
 
 class CodeBuilder(object):
     # python 代码生成器
+
+    INDENT_STEP = 4  # 每次缩进的空格数
+
     def __init__(self, indent=0):
-        self.code = []
-        self.indent_level = indent
+        self.indent = indent  # 当前缩进
+        self.lines = []  # 保存一行一行生成的代码
+
+    def forward(self):
+        """缩进前进一步"""
+        self.indent += self.INDENT_STEP
+
+    def backward(self):
+        """缩进后退一步"""
+        self.indent -= self.INDENT_STEP
+
+    def add(self, code):
+        self.lines.append(code)
+
+    def add_line(self, code):
+        self.lines.append(' ' * self.indent + code)
 
     def __str__(self):
-        return "".join(str(c) for c in self.code)
+        """拼接所有代码行后的源码"""
+        return '\n'.join(map(str, self.lines))
 
-    def add_line(self, line):
-        self.code.extend([" " * self.indent_level, line, "\n"])
-
-    def add_section(self):
-        section = CodeBuilder(self.indent_level)
-        self.code.append(section)
-        return section
-
-    INDENT_STEP = 4
-
-    def indent(self):
-        self.indent_level += self.INDENT_STEP
-
-    def dedent(self):
-        self.indent_level -= self.INDENT_STEP
-
-    def get_globals(self):
-        # 生成函数
-        assert self.indent_level == 0
-        python_source = str(self)
-        global_namespace = {}
-        exec(python_source, global_namespace)
-        return global_namespace
+    def __repr__(self):
+        """方便调试"""
+        return str(self)
 
 
-class Template(object):
-    # 模板类
-    def __init__(self, text, *contexts):
-        self.context = {}
-        for context in contexts:
-            self.context.update(context)
+class Template:
+    def __init__(self, raw_text, indent=0, default_context=None,
+                 func_name='__func_name', result_var='__result'):
+        self.raw_text = raw_text
+        self.default_context = default_context or {}
+        self.func_name = func_name
+        self.result_var = result_var
+        self.code_builder = code_builder = CodeBuilder(indent=indent)
+        self.buffered = []
 
-        self.all_vars = set()
-        self.loop_vars = set()
+        # 变量
+        self.re_variable = re.compile(r'\{\{ .*? \}\}')
+        # 注释
+        self.re_comment = re.compile(r'\{# .*? #\}')
+        # 标签
+        self.re_tag = re.compile(r'\{% .*? %\}')
+        # 用于按变量，注释，标签分割模板字符串
+        self.re_tokens = re.compile(r'''(
+            (?:\{\{ .*? \}\})
+            |(?:\{\# .*? \#\})
+            |(?:\{% .*? %\})
+        )''', re.X)
 
-        code = CodeBuilder()
+        # 生成 def __func_name():
+        code_builder.add_line('def {}():'.format(self.func_name))
+        code_builder.forward()
+        # 生成 __result = []
+        code_builder.add_line('{} = []'.format(self.result_var))
+        # if/for 匹配判断
+        self.ops_stack = []
+        self._parse_text()
 
-        code.add_line("def render_function(context, do_dots):")
-        code.indent()
-        vars_code = code.add_section()
-        code.add_line("result = []")
-        code.add_line("append_result = result.append")
-        code.add_line("extend_result = result.extend")
-        code.add_line("to_str = str")
+        self.flush_buffer()
+        # 生成 return "".join(__result)
+        code_builder.add_line('return "".join({})'.format(self.result_var))
+        code_builder.backward()
 
-        buffered = []
-
-        def flush_output():
-            if len(buffered) == 1:
-                code.add_line("append_result(%s)" % buffered[0])
-            elif len(buffered) > 1:
-                code.add_line("extend_result([%s])" % ", ".join(buffered))
-            del buffered[:]
-
-        ops_stack = []
-
-        tokens = re.split(r"(?s)({{.*?}}|{%.*?%}|{#.*?#})", text)
+    def _parse_text(self):
+        """解析模板"""
+        tokens = self.re_tokens.split(self.raw_text)
+        handlers = (
+            (self.re_variable.match, self._handle_variable),  # {{ variable }}
+            (self.re_tag.match, self._handle_tag),  # {% tag %}
+            (self.re_comment.match, self._handle_comment),  # {# comment #}
+        )
+        default_handler = self._handle_string  # 普通字符串
 
         for token in tokens:
-            if token.startswith('{#'):
-                continue
-            elif token.startswith('{{'):
-                expr = self._expr_code(token[2:-2].strip())
-                buffered.append("to_str(%s)" % expr)
-            elif token.startswith('{%'):
-                flush_output()
-                words = token[2:-2].strip().split()
-                if words[0] == 'if':
-                    if len(words) != 2:
-                        self._syntax_error("Don't understand if", token)
-                    ops_stack.append('if')
-                    code.add_line("if %s:" % self._expr_code(words[1]))
-                    code.indent()
-                elif words[0] == 'for':
-                    if len(words) != 4 or words[2] != 'in':
-                        self._syntax_error("Don't understand for", token)
-                    ops_stack.append('for')
-                    self._variable(words[1], self.loop_vars)
-                    code.add_line(
-                        "for c_%s in %s:" % (
-                            words[1],
-                            self._expr_code(words[3])
-                        )
-                    )
-                    code.indent()
-                elif words[0].startswith('end'):
-                    if len(words) != 1:
-                        self._syntax_error("Don't understand end", token)
-                    end_what = words[0][3:]
-                    if not ops_stack:
-                        self._syntax_error("Too many ends", token)
-                    start_what = ops_stack.pop()
-                    if start_what != end_what:
-                        self._syntax_error("Mismatched end tag", end_what)
-                    code.dedent()
-                else:
-                    self._syntax_error("Don't understand tag", words[0])
+            for match, handler in handlers:
+                if match(token):
+                    handler(token)
+                    break
             else:
-                if token:
-                    buffered.append(repr(token))
+                default_handler(token)
 
-        if ops_stack:
-            self._syntax_error("Unmatched action tag", ops_stack[-1])
+    def _handle_variable(self, token):
+        """处理变量"""
+        variable = token.strip('{} ')
+        self.buffered.append('str({})'.format(variable))
 
-        flush_output()
+    def _handle_comment(self, token):
+        """处理注释"""
+        pass
 
-        for var_name in self.all_vars - self.loop_vars:
-            vars_code.add_line("c_%s = context[%r]" % (var_name, var_name))
+    def _handle_string(self, token):
+        """处理字符串"""
+        self.buffered.append('{}'.format(repr(token)))
 
-        code.add_line("return ''.join(result)")
-        code.dedent()
-        self._render_function = code.get_globals()['render_function']
+    def _handle_tag(self, token):
+        """处理标签"""
+        # 将前面解析的字符串，变量写入到 code_builder 中
+        # 因为标签生成的代码需要新起一行
+        self.flush_buffer()
+        tag = token.strip('{%} ')
+        tag_name = tag.split()[0]
+        self._handle_statement(tag, tag_name)
 
-    def _expr_code(self, expr):
-        # 变量解释
-        if "|" in expr:
-            pipes = expr.split("|")
-            code = self._expr_code(pipes[0])
-            for func in pipes[1:]:
-                self._variable(func, self.all_vars)
-                code = "c_%s(%s)" % (func, code)
-        elif "." in expr:
-            dots = expr.split(".")
-            code = self._expr_code(dots[0])
-            args = ", ".join(repr(d) for d in dots[1:])
-            code = "do_dots(%s, %s)" % (code, args)
-        else:
-            self._variable(expr, self.all_vars)
-            code = "c_%s" % expr
-        return code
+    def _handle_statement(self, tag, tag_name):
+        """处理 if/for"""
+        if tag_name in ('if', 'elif', 'else', 'for'):
+            if tag_name in ('elif', 'else'):
+                # elif 和 else 之前需要向后缩进一步
+                self.code_builder.backward()
+            else:
+                # if 和 for 入栈 进行匹配判断
+                self.ops_stack.append(tag_name)
+            # if True:, elif True:, else:, for xx in yy:
+            self.code_builder.add_line('{}:'.format(tag))
+            # if/for 表达式部分结束，向前缩进一步，为下一行做准备
+            self.code_builder.forward()
+        elif tag_name in ('break',):
+            self.code_builder.add_line(tag)
+        elif tag_name in ('endif', 'endfor'):
+            # tag 匹配判断
+            if not self.ops_stack:
+                self._syntax_error("Too many ends", tag)
+            start_what = self.ops_stack.pop()
+            end_what = 'end' + start_what
+            if end_what != tag_name:
+                self._syntax_error("Mismatched end tag", end_what)
+            # if/for 结束，向后缩进一步
+            self.code_builder.backward()
 
     def _syntax_error(self, msg, thing):
         raise TemplateSyntaxError("%s: %r" % (msg, thing))
 
-    def _variable(self, name, vars_set):
-        if not re.match(r"[_a-zA-Z][_a-zA-Z0-9]*$", name):
-            self._syntax_error("Not a valid name", name)
-        vars_set.add(name)
+    def flush_buffer(self):
+        # 生成类似代码: __result.extend(['<h1>', name, '</h1>'])
+        line = '{0}.extend([{1}])'.format(
+            self.result_var, ','.join(self.buffered)
+        )
+        self.code_builder.add_line(line)
+        self.buffered = []
 
     def render(self, context=None):
-        render_context = dict(self.context)
+        namespace = {}
+        namespace.update(self.default_context)
         if context:
-            render_context.update(context)
-        return self._render_function(render_context, self._do_dots)
-
-    def _do_dots(self, value, *dots):
-        for dot in dots:
-            try:
-                value = getattr(value, dot)
-            except AttributeError:
-                value = value[dot]
-            if callable(value):
-                value = value()
-        return value
+            namespace.update(context)
+        exec (str(self.code_builder), namespace)
+        result = namespace[self.func_name]()
+        return result
 
 
 def render(html, content):
     f = open(html)
     html_str = f.read()
     f.close()
-    # todo 过滤器
-    template = Template(html_str, [])
+    template = Template(html_str)
     text = template.render(content)
     return text
