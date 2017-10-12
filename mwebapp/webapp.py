@@ -10,6 +10,7 @@ import traceback
 import mimetypes
 import subprocess
 
+from mwebapp.db import create_engine
 from mwebapp.template_engine import render
 from mwebapp.environ import _to_byte, Request, Response, _to_str
 from mwebapp.httperror import notfound, badrequest, RedirectError, HttpError
@@ -173,6 +174,31 @@ class WSGIApplication(object):
         for f in L:
             self.fn = self._build_interceptor_fn(f, self.fn)
 
+    def _load_settings(self):
+        # 加载配置
+        try:
+            import settings
+        except:
+            pass
+        else:
+            database = getattr(settings, 'database', None)
+            app_list = getattr(settings, 'app', ())
+            middleware_list = getattr(settings, 'middleware', ())
+            # 建立数据库连接
+            if database: create_engine(**database)
+            # 注册路由表
+            for app in app_list:
+                modules, func = app.split('.')
+                route = __import__(modules, fromlist=[func])
+                self.register(getattr(route, func))
+            # 注册中间件
+            for middleware in middleware_list:
+                modules, func = middleware.split('.')
+                next = __import__(modules, fromlist=[func])
+                self.interceptor(getattr(next, func))
+            # 加载中间件
+            self._build_interceptor_chain()
+
     def match(self):
         # 根据请求地址及方式匹配对应的处理函数
         request = ctx.request
@@ -255,8 +281,8 @@ class WSGIApplication(object):
     def get_application(self, debug=False):
         # wsgi 入口 no reloader
         self.debug = debug
-        # 加载中间件
-        self._build_interceptor_chain()
+        # 加载settings
+        self._load_settings()
 
         def application(environ, start_response):
             ctx.request = Request(environ)
