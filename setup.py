@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mweb.py',
-    version='1.1',
+    version='1.1.1',
     author='MingLei Ji',
     author_email='ming3055@foxmail.com',
     url='https://github.com/Ming-Lei/mwebapp',

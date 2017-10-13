@@ -148,6 +148,7 @@ class WSGIApplication(object):
         self._post_static = {}
         self._get_dynamic = {}
         self._post_dynamic = {}
+        self.hasload_settings = False
         self.interceptor_list = [static_middleware]
 
     def register(self, route):
@@ -176,6 +177,7 @@ class WSGIApplication(object):
 
     def _load_settings(self):
         # 加载配置
+        self.hasload_settings = True
         try:
             import settings
         except:
@@ -227,6 +229,8 @@ class WSGIApplication(object):
         raise badrequest()
 
     def run(self, debug=False):
+        # 加载settings
+        self._load_settings()
         self.debug = debug
         if self.debug:
             self.reloader_run()
@@ -281,8 +285,9 @@ class WSGIApplication(object):
     def get_application(self, debug=False):
         # wsgi 入口 no reloader
         self.debug = debug
-        # 加载settings
-        self._load_settings()
+        # 加载settings wsgi使用
+        if not self.hasload_settings:
+            self._load_settings()
 
         def application(environ, start_response):
             ctx.request = Request(environ)
