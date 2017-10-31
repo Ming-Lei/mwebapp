@@ -74,23 +74,27 @@ def url_for(re_path, groups):
     return re_path
 
 
-def static_middleware(next):
-    request = ctx.request
-    path = request.path_info
-    if path == '/favicon.ico':
-        path = '/static' + path
-    if path.startswith('/static'):
-        fpath = _to_str('.' + path)
-        if not os.path.isfile(fpath):
-            raise notfound()
-        else:
-            fext = os.path.splitext(fpath)[1]
-            content_type = mimetypes.types_map.get(fext.lower(), 'application/octet-stream')
+class StaticMiddleware():
+    def __init__(self, app):
+        self.app = app
 
-            ctx.response.status = 200
-            ctx.response.set_header('CONTENT-TYPE', content_type)
-            return open(fpath, 'rb').read()
-    return next()
+    def __call__(self, *args, **kwargs):
+        request = ctx.request
+        path = request.path_info
+        if path == '/favicon.ico':
+            path = '/static' + path
+        if path.startswith('/static'):
+            fpath = _to_str('.' + path)
+            if not os.path.isfile(fpath):
+                raise notfound()
+            else:
+                fext = os.path.splitext(fpath)[1]
+                content_type = mimetypes.types_map.get(fext.lower(), 'application/octet-stream')
+
+                ctx.response.status = 200
+                ctx.response.set_header('CONTENT-TYPE', content_type)
+                return open(fpath, 'rb').read()
+        return self.app()
 
 
 class Route(object):
@@ -140,7 +144,7 @@ class Route(object):
 
 class WSGIApplication(object):
     def __init__(self, host='127.0.0.1', port=9000):
-        self.fn = self.match
+        self.fn = StaticMiddleware(self.match)
         self.debug = False
         self.host = host
         self.port = port
@@ -149,7 +153,6 @@ class WSGIApplication(object):
         self._get_dynamic = {}
         self._post_dynamic = {}
         self.hasload_settings = False
-        self.interceptor_list = [static_middleware]
 
     def register(self, route):
         # Route路由表注册
@@ -159,21 +162,8 @@ class WSGIApplication(object):
         self._post_dynamic.update(route._post_dynamic)
 
     def interceptor(self, func):
-        self.interceptor_list.append(func)
-
-    def _build_interceptor_fn(self, func, next):
-        # 中间件装饰器
-        def _wrapper():
-            return func(next)
-
-        return _wrapper
-
-    def _build_interceptor_chain(self):
-        # 中间件包装函数
-        L = self.interceptor_list
-        L.reverse()
-        for f in L:
-            self.fn = self._build_interceptor_fn(f, self.fn)
+        # 加载中间件
+        self.fn = func(self.fn)
 
     def _load_settings(self):
         # 加载配置
@@ -198,8 +188,6 @@ class WSGIApplication(object):
                 modules, func = middleware.split('.')
                 next = __import__(modules, fromlist=[func])
                 self.interceptor(getattr(next, func))
-            # 加载中间件
-            self._build_interceptor_chain()
 
     def match(self):
         # 根据请求地址及方式匹配对应的处理函数

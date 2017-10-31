@@ -15,5 +15,5 @@ app = (
 )
 
 middleware = (
-    'middleware.test_middleware',
+    'middleware.TestMiddleware',
 )
