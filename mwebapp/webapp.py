@@ -143,16 +143,15 @@ class Route(object):
 
 
 class WSGIApplication(object):
-    def __init__(self, host='127.0.0.1', port=9000):
+    def __init__(self, host='127.0.0.1', port=9000, debug=False):
         self.fn = StaticMiddleware(self.match)
-        self.debug = False
+        self.debug = debug
         self.host = host
         self.port = port
         self._get_static = {}
         self._post_static = {}
         self._get_dynamic = {}
         self._post_dynamic = {}
-        self.hasload_settings = False
 
     def register(self, route):
         # Route路由表注册
@@ -165,29 +164,27 @@ class WSGIApplication(object):
         # 加载中间件
         self.fn = func(self.fn)
 
-    def _load_settings(self):
+    def load_settings(self, settings):
         # 加载配置
-        self.hasload_settings = True
-        try:
-            import settings
-        except:
-            pass
-        else:
-            database = getattr(settings, 'database', None)
-            app_list = getattr(settings, 'app', ())
-            middleware_list = getattr(settings, 'middleware', ())
-            # 建立数据库连接
-            if database: create_engine(**database)
-            # 注册路由表
-            for app in app_list:
-                modules, func = app.split('.')
-                route = __import__(modules, fromlist=[func])
-                self.register(getattr(route, func))
-            # 注册中间件
-            for middleware in middleware_list:
-                modules, func = middleware.split('.')
-                next = __import__(modules, fromlist=[func])
-                self.interceptor(getattr(next, func))
+        database = getattr(settings, 'database', None)
+        app_list = getattr(settings, 'app', ())
+        middleware_list = getattr(settings, 'middleware', ())
+        debug = getattr(settings, 'debug', False)
+        # 建立数据库连接
+        if database: create_engine(**database)
+        # 注册路由表
+        for app in app_list:
+            modules, func = app.split('.')
+            route = __import__(modules, fromlist=[func])
+            self.register(getattr(route, func))
+        # 注册中间件
+        for middleware in middleware_list:
+            modules, func = middleware.split('.')
+            next = __import__(modules, fromlist=[func])
+            self.interceptor(getattr(next, func))
+        # debug
+        if debug:
+            self.debug = debug
 
     def match(self):
         # 根据请求地址及方式匹配对应的处理函数
@@ -216,10 +213,7 @@ class WSGIApplication(object):
             raise notfound()
         raise badrequest()
 
-    def run(self, debug=False):
-        # 加载settings
-        self._load_settings()
-        self.debug = debug
+    def run(self):
         if self.debug:
             self.reloader_run()
         else:
@@ -266,60 +260,54 @@ class WSGIApplication(object):
     def runserver(self):
         # 使用python内置的wsgi服务
         from wsgiref.simple_server import make_server
-        server = make_server(self.host, self.port, self.get_application(self.debug))
+        server = make_server(self.host, self.port, self.application)
         print('run server on http://%s:%s' % (self.host, self.port))
         server.serve_forever()
 
-    def get_application(self, debug=False):
-        # wsgi 入口 no reloader
-        self.debug = debug
-        # 加载settings wsgi使用
-        if not self.hasload_settings:
-            self._load_settings()
+    def application(self, environ, start_response):
+        ctx.request = Request(environ)
+        ctx.response = Response()
+        # 请求处理
+        try:
+            r = self.fn()
+            r = _to_byte(r)
+            ctx.responce_html = [r]
+        except RedirectError as e:
+            # 重定向
+            ctx.response.status = e.status
+            ctx.response.set_header('Location', e.location)
+            ctx.responce_html = []
+        except HttpError as e:
+            # http error
+            error = '<html><body><h1>' + e.status + '</h1></body></html>'
+            error = _to_byte(error)
+            ctx.response.status = e.status
+            ctx.responce_html = [error]
+        except Exception as e:
+            # 系统错误
+            if self.debug:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                exception_list = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                stacks = ''.join(exception_list)
+                error = '''<html><body><h1>500 Internal Server Error</h1>
+                            <div style="font-family:Monaco, Menlo, Consolas, 'Courier New', monospace;"><pre>''' \
+                        + stacks.replace('<', '&lt;').replace('>', '&gt;') + '''</pre></div></body></html>'''
+            else:
+                error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
+            error = _to_byte(error)
+            ctx.response.status = 500
+            ctx.responce_html = [error]
+        finally:
+            # 返回处理结果
+            status = ctx.response.status
+            headers = ctx.response.headers
+            responce_html = ctx.responce_html
+            start_response(status, headers)
+            # 清空ctx
+            del ctx.request
+            del ctx.response
+            del ctx.responce_html
+            return responce_html
 
-        def application(environ, start_response):
-            ctx.request = Request(environ)
-            ctx.response = Response()
-            # 请求处理
-            try:
-                r = self.fn()
-                r = _to_byte(r)
-                ctx.responce_html = [r]
-            except RedirectError as e:
-                # 重定向
-                ctx.response.status = e.status
-                ctx.response.set_header('Location', e.location)
-                ctx.responce_html = []
-            except HttpError as e:
-                # http error
-                error = '<html><body><h1>' + e.status + '</h1></body></html>'
-                error = _to_byte(error)
-                ctx.response.status = e.status
-                ctx.responce_html = [error]
-            except Exception as e:
-                # 系统错误
-                if self.debug:
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    exception_list = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                    stacks = ''.join(exception_list)
-                    error = '''<html><body><h1>500 Internal Server Error</h1>
-                                <div style="font-family:Monaco, Menlo, Consolas, 'Courier New', monospace;"><pre>''' \
-                            + stacks.replace('<', '&lt;').replace('>', '&gt;') + '''</pre></div></body></html>'''
-                else:
-                    error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
-                error = _to_byte(error)
-                ctx.response.status = 500
-                ctx.responce_html = [error]
-            finally:
-                # 返回处理结果
-                status = ctx.response.status
-                headers = ctx.response.headers
-                responce_html = ctx.responce_html
-                start_response(status, headers)
-                # 清空ctx
-                del ctx.request
-                del ctx.response
-                del ctx.responce_html
-                return responce_html
-
-        return application
+    def __call__(self, *args, **kwargs):
+        return self.application(*args, **kwargs)

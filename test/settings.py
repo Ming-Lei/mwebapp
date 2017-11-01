@@ -17,3 +17,5 @@ app = (
 middleware = (
     'middleware.TestMiddleware',
 )
+
+debug = True
