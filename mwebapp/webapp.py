@@ -165,11 +165,25 @@ class WSGIApplication(object):
         self.fn = func(self.fn)
 
     def load_settings(self, settings):
-        # 加载配置
+        # 加载文件配置
         database = getattr(settings, 'database', None)
-        app_list = getattr(settings, 'app', ())
-        middleware_list = getattr(settings, 'middleware', ())
+        app = getattr(settings, 'app', ())
+        middleware = getattr(settings, 'middleware', ())
         debug = getattr(settings, 'debug', False)
+        setting_dict = {
+            'database': database,
+            'app': app,
+            'middleware': middleware,
+            'debug': debug
+        }
+        self.load_dict(setting_dict)
+
+    def load_dict(self, settings):
+        # 加载字典配置
+        database = settings.get('database', None)
+        app_list = settings.get('app', ())
+        middleware_list = settings.get('middleware', ())
+        debug = settings.get('debug', False)
         # 建立数据库连接
         if database: create_engine(**database)
         # 注册路由表
@@ -267,22 +281,25 @@ class WSGIApplication(object):
     def application(self, environ, start_response):
         ctx.request = Request(environ)
         ctx.response = Response()
+        responce_html = []
         # 请求处理
         try:
             r = self.fn()
+            if not r:
+                raise ValueError('View function did not return a response')
             r = _to_byte(r)
-            ctx.responce_html = [r]
+            responce_html = [r]
         except RedirectError as e:
             # 重定向
             ctx.response.status = e.status
             ctx.response.set_header('Location', e.location)
-            ctx.responce_html = []
+            responce_html = []
         except HttpError as e:
             # http error
             error = '<html><body><h1>' + e.status + '</h1></body></html>'
             error = _to_byte(error)
             ctx.response.status = e.status
-            ctx.responce_html = [error]
+            responce_html = [error]
         except Exception as e:
             # 系统错误
             if self.debug:
@@ -296,17 +313,15 @@ class WSGIApplication(object):
                 error = '<html><body><h1>500 Internal Server Error</h1></body></html>'
             error = _to_byte(error)
             ctx.response.status = 500
-            ctx.responce_html = [error]
+            responce_html = [error]
         finally:
             # 返回处理结果
             status = ctx.response.status
             headers = ctx.response.headers
-            responce_html = ctx.responce_html
             start_response(status, headers)
             # 清空ctx
             del ctx.request
             del ctx.response
-            del ctx.responce_html
             return responce_html
 
     def __call__(self, *args, **kwargs):
