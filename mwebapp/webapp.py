@@ -142,16 +142,13 @@ class Route(object):
         return _decorator
 
 
-class WSGIApplication(object):
-    def __init__(self, host='127.0.0.1', port=9000, debug=False):
+class WSGIApplication(Route):
+    def __init__(self, host='127.0.0.1', port=9000, debug=False, startpath=''):
+        super(WSGIApplication, self).__init__(startpath)
         self.fn = StaticMiddleware(self.match)
         self.debug = debug
         self.host = host
         self.port = port
-        self._get_static = {}
-        self._post_static = {}
-        self._get_dynamic = {}
-        self._post_dynamic = {}
 
     def register(self, route):
         # Route路由表注册
@@ -188,12 +185,16 @@ class WSGIApplication(object):
         if database: create_engine(**database)
         # 注册路由表
         for app in app_list:
-            modules, func = app.split('.')
+            module_list = app.split('.')
+            modules = '.'.join(module_list[:-1])
+            func = module_list[-1]
             route = __import__(modules, fromlist=[func])
             self.register(getattr(route, func))
         # 注册中间件
         for middleware in middleware_list:
-            modules, func = middleware.split('.')
+            module_list = middleware.split('.')
+            modules = '.'.join(module_list[:-1])
+            func = module_list[-1]
             next = __import__(modules, fromlist=[func])
             self.interceptor(getattr(next, func))
         # debug

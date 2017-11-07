@@ -15,7 +15,7 @@ app = (
 )
 
 middleware = (
-    'middleware.TestMiddleware',
+    'middleware.PathAutoCompleter',
 )
 
 debug = True

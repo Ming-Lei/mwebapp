@@ -224,7 +224,7 @@ class Request(object):
 
     def get_body(self):
         fp = self._environ['wsgi.input']
-        return fp.read(int(self._environ.get('CONTENT_LENGTH','0')))
+        return fp.read(int(self._environ.get('CONTENT_LENGTH', '0')))
 
     @property
     def remote_addr(self):
@@ -252,6 +252,12 @@ class Request(object):
         if sys.version > '3':
             path = path.encode('iso-8859-1').decode('utf8')
         return path
+
+    @path_info.setter
+    def path_info(self, value=''):
+        path = self.path_info
+        if value.startswith(path) and not self.path_info.endswith('/'):
+            self._environ['PATH_INFO'] = value
 
     @property
     def host(self):
