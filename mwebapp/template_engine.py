@@ -40,7 +40,7 @@ class CodeBuilder(object):
         return str(self)
 
 
-class Template:
+class Template(object):
     def __init__(self, raw_text, indent=0, default_context=None,
                  func_name='__func_name', result_var='__result'):
         self.raw_text = raw_text

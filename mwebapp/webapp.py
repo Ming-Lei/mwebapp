@@ -15,11 +15,6 @@ from mwebapp.template_engine import render
 from mwebapp.environ import _to_byte, Request, Response, _to_str
 from mwebapp.httperror import notfound, badrequest, RedirectError, HttpError
 
-if sys.version > '3':
-    import _thread as thread
-else:
-    import thread
-
 ctx = threading.local()
 ctx.request = Request({})
 ctx.response = Response()
@@ -248,7 +243,7 @@ class WSGIApplication(Route):
                         file_path = file_split[0] + '.py'
                         files[file_path] = os.stat(file_path).st_mtime
             # 创建线程启动wsgi
-            thread.start_new_thread(self.runserver, ())
+            threading.Thread(target=self.runserver, name='runserver', args=()).start()
             while True:
                 # 监控文件变化
                 time.sleep(interval)
