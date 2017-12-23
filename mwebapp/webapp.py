@@ -76,8 +76,8 @@ class StaticMiddleware():
     def __call__(self, *args, **kwargs):
         request = ctx.request
         path = request.path_info
-        if path == '/favicon.ico':
-            path = '/static' + path
+        if path == '/favicon.ico/':
+            path = '/static/favicon.ico'
         if path.startswith('/static'):
             fpath = _to_str('.' + path)
             if not os.path.isfile(fpath):

@@ -1,12 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>index</title>
-</head>
-<body>
+{% extends 'base.html' %}
+
+{% block title %} index {% endblock %}
+
+{% block body %}
     <h1>hello world</h1>
     <h2> the ip you from {{ request.remote_addr }}</h2>
     <img src="/static/img/cat.png">
-</body>
-</html>
+{% endblock %}
