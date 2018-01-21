@@ -243,7 +243,9 @@ class WSGIApplication(Route):
                         file_path = file_split[0] + '.py'
                         files[file_path] = os.stat(file_path).st_mtime
             # 创建线程启动wsgi
-            threading.Thread(target=self.runserver, name='runserver', args=()).start()
+            run_thread = threading.Thread(target=self.runserver, name='runserver', args=())
+            run_thread.setDaemon(True)
+            run_thread.start()
             while True:
                 # 监控文件变化
                 time.sleep(interval)
